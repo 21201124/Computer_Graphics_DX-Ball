@@ -324,3 +324,284 @@ static void updateGame(float dt){
   bool any=false; for(size_t i=0;i<bricks.size();++i){ if(bricks[i].alive){ any=true; break; } }
   if(!any){ current=WIN; saveHighScore(); canResume=false; }
 }
+// --- Rendering Functions for Modern Filled UI ---
+
+static void drawPerkIcon(PerkType t,float x,float y,float s){
+  glPushMatrix(); glTranslatef(x,y,0); glScalef(s,s,1);
+  glBegin(GL_LINES);
+  switch(t){
+    case EXTRA_LIFE: glColor3f(1.0f,0.2f,0.2f);
+      glVertex2f(-0.5f, 0.2f); glVertex2f( 0.0f, 0.8f);
+      glVertex2f( 0.5f, 0.2f); glVertex2f( 0.0f, 0.8f);
+      glVertex2f(-0.5f, 0.2f); glVertex2f( 0.5f, 0.2f);
+      break;
+    case SPEED_UP: glColor3f(0.9f,0.9f,0.2f);
+      glVertex2f(-0.5f, -0.5f); glVertex2f( 0.0f, 0.5f);
+      glVertex2f( 0.5f, -0.5f); glVertex2f( 0.0f, 0.5f);
+      glVertex2f(-0.3f, 0.0f); glVertex2f( 0.3f, 0.0f);
+      break;
+    case WIDE_PADDLE: glColor3f(0.3f,1.0f,0.3f); glVertex2f(-0.9f, 0.0f); glVertex2f( 0.9f, 0.0f); break;
+    case SHRINK_PADDLE: glColor3f(1.0f,0.5f,0.1f); glVertex2f(-0.4f, 0.0f); glVertex2f( 0.4f, 0.0f); break;
+    case THROUGH_BALL: glColor3f(0.2f,0.8f,1.0f);
+      glVertex2f(0.0f, 0.8f); glVertex2f(-0.8f, 0.0f);
+      glVertex2f(-0.8f, 0.0f); glVertex2f(0.0f, -0.8f);
+      glVertex2f(0.0f, -0.8f); glVertex2f(0.8f, 0.0f);
+      glVertex2f(0.8f, 0.0f); glVertex2f(0.0f, 0.8f);
+      break;
+    case FIREBALL: glColor3f(1.0f,0.4f,0.0f);
+      glVertex2f(-0.5f, -0.5f); glVertex2f( 0.5f, 0.5f);
+      glVertex2f( 0.5f, -0.5f); glVertex2f(-0.5f, 0.5f);
+      break;
+    case INSTANT_DEATH: glColor3f(0.8f,0.0f,0.8f);
+      glVertex2f(-0.6f, 0.6f); glVertex2f( 0.6f, -0.6f);
+      glVertex2f( 0.6f, 0.6f); glVertex2f(-0.6f, -0.6f);
+      break;
+    case SHOOTING_PADDLE: glColor3f(0.9f,0.9f,0.2f);
+      glVertex2f(0.0f, -0.5f); glVertex2f( 0.0f, 0.5f);
+      glVertex2f(-0.3f, 0.5f); glVertex2f( 0.3f, 0.5f);
+      break;
+  }
+  glEnd();
+  glPopMatrix();
+}
+
+static void renderHUD(){
+  glColor3f(0.9f, 0.9f, 0.9f);
+  drawText(10, scrH-24, std::string("SCORE: ")+std::to_string(score));
+  drawText(10, scrH-48, std::string("LIVES: ")+std::to_string(lives));
+
+  float tNow=nowSec(); if(current==PLAY) playTime += (tNow-lastTick); lastTick=tNow;
+  char buf[64]; std::snprintf(buf,sizeof(buf),"TIME: %.1fs", playTime);
+  drawText(scrW-160, scrH-24, buf);
+
+  int y = scrH-72; char pbuf[64];
+  glColor3f(1.0f, 0.9f, 0.2f);
+  if(ball.through){ std::snprintf(pbuf,sizeof(pbuf),"THROUGH: %ds", (int)std::ceil(ball.throughTimer)); drawText(scrW-200,y,pbuf); y-=22; }
+  if(ball.fireball){ std::snprintf(pbuf,sizeof(pbuf),"FIREBALL: %ds", (int)std::ceil(ball.fireballTimer)); drawText(scrW-200,y,pbuf); y-=22; }
+  if(paddle.shooting){ std::snprintf(pbuf,sizeof(pbuf),"SHOOTING: %ds", (int)std::ceil(paddle.shootingTimer)); drawText(scrW-200,y,pbuf); y-=22; }
+}
+
+static void renderScene(){
+  glClearColor(0.05f,0.05f,0.08f,1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  // MENU
+  if(current==MENU){
+    glColor3f(0.2f, 0.8f, 1.0f);
+    drawText(scrW/2.f-130, scrH-120, "DX-BALL [MODERN EDITION]");
+    const char* itemsResume[] = {"[ RESUME ]","[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+    const char* itemsFresh[]  = {"[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+    const char** items = canResume ? itemsResume : itemsFresh;
+    int itemCount = canResume ? 5 : 4;
+    for(int i=0;i<itemCount;i++){
+      float y = scrH/2.f + 60 - i*40.f;
+      if(i==menuIndex){ glColor3f(1.0f,0.9f,0.2f); drawText(scrW/2.f-90, y, std::string("> ")+items[i]); }
+      else { glColor3f(0.2f, 0.8f, 1.0f); drawText(scrW/2.f-70, y, items[i]); }
+    }
+    loadBest();
+    if(haveBest){
+      char b[96]; std::snprintf(b,sizeof(b),"BEST: %d PTS IN %.1FS", bestScore, bestTime);
+      glColor3f(0.3f,1.0f,0.3f); drawText(scrW/2.f-130, scrH/2.f-140, b);
+    }
+    glutSwapBuffers(); return;
+  }
+
+  // HELP
+  if(current==HELP){
+    glColor3f(0.5f, 0.7f, 1.0f);
+    drawText(40, scrH-100, "HELP / CONTROLS:");
+    drawText(40, scrH-130, "MOUSE OR LEFT/RIGHT ARROW TO MOVE PADDLE");
+    drawText(40, scrH-155, "SPACE / LEFT CLICK: LAUNCH BALL");
+    drawText(40, scrH-180, "P OR ESC: PAUSE/RESUME");
+    drawText(40, scrH-205, "F OR RIGHT CLICK: FIRE BULLET (WHEN SHOOTING ACTIVE)");
+    drawText(40, scrH-235, "PERKS: LIFE(HEART), SPEED(BOLT), WIDE/SMALL PADDLE, THROUGH(RING),");
+    drawText(40, scrH-255, "      FIRE(FLAME), DEATH(SKULL), SHOOT(GUN)");
+    drawText(40, scrH-285, "GOAL: CLEAR ALL BRICKS AS FAST AS POSSIBLE.");
+    glColor3f(1.0f,0.9f,0.2f); drawText(40, scrH-315, "PRESS ENTER TO RETURN TO MENU.");
+    glutSwapBuffers(); return;
+  }
+
+  // HIGHSCORES
+  if(current==HIGHSCORES){
+    glColor3f(0.5f, 0.7f, 1.0f);
+    drawText(40, scrH-90, "HIGH SCORES (SCORE, TIME)");
+
+    std::vector<Run> rows = history;
+    std::sort(rows.begin(), rows.end(), [](const Run& a, const Run& b){
+      if(a.s != b.s) return a.s > b.s;
+      return a.t < b.t;
+    });
+
+    int y = scrH-130; int shown=0;
+    if(rows.empty()){
+      drawText(60, y, "NO SCORES YET");
+    } else {
+      for(size_t i=0;i<rows.size() && shown<15;i++){
+        char row[96];
+        std::snprintf(row,sizeof(row),"%2d) %6d PTS    %6.1FS", (int)i+1, rows[i].s, rows[i].t);
+        drawText(60, y, row); y -= 24; ++shown;
+      }
+    }
+
+    loadBest();
+    if(haveBest){
+      char b[96]; std::snprintf(b,sizeof(b),"BEST: %d PTS IN %.1FS", bestScore, bestTime);
+      glColor3f(0.3f,1.0f,0.3f); drawText(40, y-20, b);
+      glColor3f(0.5f, 0.7f, 1.0f);
+    }
+
+    glColor3f(1.0f,0.9f,0.2f); drawText(40, 60, "PRESS ENTER FOR MENU");
+    glutSwapBuffers(); return;
+  }
+
+  // GAME PLAY: draw bricks, paddle, ball, perks, bullets
+  for(size_t i=0;i<bricks.size();++i){
+    const Brick& b=bricks[i]; if(!b.alive) continue;
+    float multiplier = (b.hp == 2) ? 1.0f : 0.6f;
+    glColor3f(b.r * multiplier, b.g * multiplier, b.b * multiplier);
+    drawRectFilled(b.x, b.y, b.w, b.h);
+
+    glColor3f(0.1f, 0.1f, 0.1f);
+    float x0 = b.x - b.w/2.f, x1 = b.x + b.w/2.f;
+    float y0 = b.y - b.h/2.f, y1 = b.y + b.h/2.f;
+    glBegin(GL_LINE_LOOP);
+      glVertex2f(x0,y0); glVertex2f(x1,y0); glVertex2f(x1,y1); glVertex2f(x0,y1);
+    glEnd();
+  }
+
+  glColor3f(0.2f, 0.5f, 0.9f);
+  drawRectFilled(paddle.pos.x, paddle.pos.y, paddle.w, paddle.h);
+
+  if(ball.fireball) glColor3f(1.0f,0.45f,0.15f);
+  else if(ball.through) glColor3f(0.9f,0.2f,1.0f);
+  else glColor3f(0.3f, 1.0f, 0.3f);
+  drawCircleFilled(ball.pos.x, ball.pos.y, ball.radius, 32);
+
+  for(size_t i=0;i<perks.size();++i){
+    const Perk& p=perks[i]; if(!p.alive) continue;
+    glColor3f(0.8f, 0.8f, 0.8f);
+    drawRectFilled(p.pos.x, p.pos.y, p.size, p.size);
+    drawPerkIcon(p.type, p.pos.x, p.pos.y, 8.f);
+  }
+
+  for(size_t i=0;i<bullets.size();++i){
+    const Bullet& bu = bullets[i]; if(!bu.alive) continue;
+    glColor3f(1.0f, 0.9f, 0.2f);
+    drawRectFilled(bu.pos.x, bu.pos.y, bu.w, bu.h);
+  }
+
+  renderHUD();
+
+  // PAUSE SCREEN WITH OPTIONS
+  if(current==PAUSE){
+    glColor3f(0.9f,0.9f,0.9f);
+    drawText(scrW/2.f-40, scrH/2.f + 60, "== PAUSED ==");
+
+    // Options: Resume, Exit to Main Menu
+    const char* opts[] = {"[ RESUME ]", "[ EXIT TO MAIN MENU ]"};
+    for(int i=0;i<2;i++){
+      if(i==pauseMenuIndex) glColor3f(1.0f,0.9f,0.2f);
+      else glColor3f(0.6f,0.8f,1.0f);
+      float y = scrH/2.f + 20 - i*40.f;
+      drawText(scrW/2.f - (i==0?50:140), y, opts[i]);
+    }
+    drawText(scrW/2.f-140, scrH/2.f - 120, "Use UP/DOWN to select, ENTER or Left-Click to confirm.");
+  }
+
+  if(current==WIN){ glColor3f(0.3f,1.0f,0.3f); drawText(scrW/2.f-80, scrH/2.f, "[ LEVEL CLEARED! ]"); drawText(scrW/2.f-120, scrH/2.f-30, "PRESS ENTER FOR MENU"); }
+  if(current==GAMEOVER){ glColor3f(1.0f,0.3f,0.3f); drawText(scrW/2.f-60, scrH/2.f, "[ GAME OVER ]"); drawText(scrW/2.f-120, scrH/2.f-30, "PRESS ENTER FOR MENU"); }
+
+  glutSwapBuffers();
+}
+
+// --- GLUT Callbacks ---
+
+static void onDisplay(){ renderScene(); }
+
+static void onIdle(){
+  if(current==PLAY){
+    static float prev = nowSec();
+    float t = nowSec(); float dt = t - prev; prev = t;
+    if(dt<0.f) dt=0.f; if(dt>0.03f) dt=0.03f;
+    updateGame(dt);
+  }
+  glutPostRedisplay();
+}
+
+static void onReshape(int w,int h){
+  scrW=w; scrH=h; glViewport(0,0,w,h);
+  glMatrixMode(GL_PROJECTION); glLoadIdentity();
+  gluOrtho2D(0, (GLdouble)w, 0, (GLdouble)h);
+  glMatrixMode(GL_MODELVIEW); glLoadIdentity();
+}
+
+static void onKey(unsigned char key, int, int){
+  // Top-level MENU input
+  if(current==MENU){
+    if(key=='\r' || key=='\n'){
+      const char* itemsResume[] = {"[ RESUME ]","[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+      const char* itemsFresh[]  = {"[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+      const char** items = canResume ? itemsResume : itemsFresh;
+      int itemCount = canResume ? 5 : 4;
+      if(menuIndex>=0 && menuIndex<itemCount){
+        std::string it = items[menuIndex];
+        if(it=="[ RESUME ]" && canResume) current=PLAY;
+        else if(it=="[ START NEW GAME ]") newGame();
+        else if(it=="[ HIGH SCORES ]") current=HIGHSCORES;
+        else if(it=="[ HELP ]") current=HELP;
+        else if(it=="[ EXIT ]") std::exit(0);
+      }
+    }
+    if(key==27) std::exit(0);
+    return;
+  }
+
+  // HELP or HIGHSCORES return to menu
+  if(current==HELP || current==HIGHSCORES){
+    if(key=='\r' || key=='\n' || key==27) current=MENU;
+    return;
+  }
+
+  // WIN or GAMEOVER: Enter -> menu
+  if(current==WIN || current==GAMEOVER){
+    if(key=='\r' || key=='\n') current=MENU;
+    return;
+  }
+
+  // Toggle Pause (P or Esc)
+  if(key==27 || key=='p' || key=='P'){
+    if(current==PLAY){ current=PAUSE; canResume=true; pauseMenuIndex=0; }
+    else if(current==PAUSE){ current=PLAY; }
+    return;
+  }
+
+  // If paused, allow keyboard selection
+  if(current==PAUSE){
+    if(key=='\r' || key=='\n'){
+      if(pauseMenuIndex==0){ current=PLAY; }
+      else if(pauseMenuIndex==1){ exitToMenu(); }
+    }
+    // also support single-key shortcuts
+    if(key=='r' || key=='R'){ current=PLAY; }
+    if(key=='e' || key=='E'){ exitToMenu(); }
+    return;
+  }
+
+  if(current!=PLAY) return;
+
+  // Launch Ball
+  if(key==' ' && ball.stuck){
+    ball.stuck=false; ball.vel = normalize(Vec2{0.2f,1.f})*ball.speed; hasLaunched=true;
+  }
+  // Fire Bullet
+  if(key=='f' || key=='F') fireBullet();
+}
+
+static void onSpKey(int key,int,int){
+  // Menu navigation
+  if(current==MENU){
+    int itemCount = canResume ? 5 : 4;
+    if(key==GLUT_KEY_UP){ menuIndex = (menuIndex - 1 + itemCount) % itemCount; }
+    if(key==GLUT_KEY_DOWN){ menuIndex = (menuIndex + 1) % itemCount; }
+    return;
+  }
