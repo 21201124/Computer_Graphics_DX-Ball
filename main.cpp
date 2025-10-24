@@ -605,3 +605,98 @@ static void onSpKey(int key,int,int){
     if(key==GLUT_KEY_DOWN){ menuIndex = (menuIndex + 1) % itemCount; }
     return;
   }
+// Pause menu navigation
+  if(current==PAUSE){
+    if(key==GLUT_KEY_UP){ pauseMenuIndex = (pauseMenuIndex - 1 + 2) % 2; }
+    if(key==GLUT_KEY_DOWN){ pauseMenuIndex = (pauseMenuIndex + 1) % 2; }
+    return;
+  }
+  // In gameplay, movement keys
+  if(current!=PLAY) return;
+  if(key==GLUT_KEY_LEFT) leftHeld=true;
+  if(key==GLUT_KEY_RIGHT) rightHeld=true;
+}
+
+static void onSpKeyUp(int key,int,int){
+  if(key==GLUT_KEY_LEFT) leftHeld=false;
+  if(key==GLUT_KEY_RIGHT) rightHeld=false;
+}
+
+static void onMouse(int button,int state,int x,int y){
+  // Convert GLUT y to window coords (we use 0..scrH)
+  int wy = scrH - y;
+  if(current==MENU){
+    if(button==GLUT_LEFT_BUTTON && state==GLUT_DOWN){
+      const char* itemsResume[] = {"[ RESUME ]","[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+      const char* itemsFresh[]  = {"[ START NEW GAME ]","[ HIGH SCORES ]","[ HELP ]","[ EXIT ]"};
+      const char** items = canResume ? itemsResume : itemsFresh;
+      int itemCount = canResume ? 5 : 4;
+      if(menuIndex>=0 && menuIndex<itemCount){
+        std::string it = items[menuIndex];
+        if(it=="[ RESUME ]" && canResume) current=PLAY;
+        else if(it=="[ START NEW GAME ]") newGame();
+        else if(it=="[ HIGH SCORES ]") current=HIGHSCORES;
+        else if(it=="[ HELP ]") current=HELP;
+        else if(it=="[ EXIT ]") std::exit(0);
+      }
+    }
+    return;
+  }
+
+  if(current==PAUSE){
+    if(button==GLUT_LEFT_BUTTON && state==GLUT_DOWN){
+      // Treat left-click as Enter: select highlighted option
+      if(pauseMenuIndex==0){ current=PLAY; }
+      else if(pauseMenuIndex==1){ exitToMenu(); }
+    }
+    return;
+  }
+
+  if(current==PLAY){
+    if(ball.stuck && button==GLUT_LEFT_BUTTON && state==GLUT_DOWN){
+      ball.stuck=false; ball.vel = normalize(Vec2{0,1})*ball.speed;
+    }
+    if(button==GLUT_RIGHT_BUTTON && state==GLUT_DOWN){
+      fireBullet();
+    }
+  }
+}
+
+static void onMotion(int x,int y){ (void)y;
+  if(current==PLAY){
+    float minX = paddle.w/2.f+6.f, maxX = scrW - paddle.w/2.f - 6.f;
+    float nx = (float)x; if(nx<minX) nx=minX; if(nx>maxX) nx=maxX;
+    paddle.pos.x = nx;
+  }
+}
+static void onPassiveMotion(int x,int y){ onMotion(x,y); }
+
+int main(int argc,char** argv){
+  glutInit(&argc, argv);
+  glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+  glutInitWindowSize(scrW, scrH);
+  glutCreateWindow("DX-Ball - OpenGL GLUT [Modern Edition]");
+  glDisable(GL_DEPTH_TEST);
+
+  glutDisplayFunc(onDisplay);
+  glutIdleFunc(onIdle);
+  glutReshapeFunc(onReshape);
+  glutKeyboardFunc(onKey);
+  glutSpecialFunc(onSpKey);
+  glutSpecialUpFunc(onSpKeyUp);
+  glutMouseFunc(onMouse);
+  glutMotionFunc(onMotion);
+  glutPassiveMotionFunc(onPassiveMotion);
+
+  rng.seed((unsigned)time(nullptr));
+  loadBest();
+
+  menuIndex = 0; canResume = false; pauseMenuIndex = 0;
+
+  // initialize default paddle/ball so menu can show something
+  paddle.pos = {scrW/2.f, 48.f}; paddle.w = 120.f; paddle.h = 16.f; paddle.speed = 630.f;
+  ball.radius = 9.f; ball.speed = 320.f; resetBallOnPaddle();
+
+  glutMainLoop();
+  return 0;
+}
